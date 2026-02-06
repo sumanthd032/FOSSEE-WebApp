@@ -19,7 +19,7 @@ class FileUploadView(APIView):
             return Response({"error": "No file provided"}, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            # Delegate logic to the Service Layer (Step 1)
+            # Delegate logic to the Service Layer 
             history_record = process_csv_file(file_obj)
             serializer = UploadHistorySerializer(history_record)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -66,8 +66,6 @@ class HistoryListView(generics.ListAPIView):
 
 class PDFReportView(APIView):
     def get(self, request, *args, **kwargs):
-        # For simplicity, getting the latest one. 
-        # In a real app, pass the ID as a URL param.
         latest = UploadHistory.objects.order_by('-uploaded_at').first()
         if not latest:
             return Response({"error": "No data found"}, status=404)
