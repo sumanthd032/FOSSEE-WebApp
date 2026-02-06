@@ -5,18 +5,41 @@ import StatsCards from './components/StatsCards';
 import ChartsSection from './components/ChartsSection';
 import DataTable from './components/DataTable';
 import AnalyticsCharts from './components/AnalyticsCharts';
-import HistoryList from './components/HistoryList'; 
+import HistoryList from './components/HistoryList';
+import Auth from './components/Auth'; // <--- THIS WAS MISSING
 import { api } from './services/api';
-import { FileDown } from 'lucide-react';
+import { FileDown, LogOut } from 'lucide-react';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboardData, setDashboardData] = useState(null);
-  const [historyData, setHistoryData] = useState([]); 
+  const [historyData, setHistoryData] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // --- Fetch Dashboard Data ---
+  // --- Auth Check on Load ---
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+        setIsAuthenticated(true);
+        fetchDashboardData();
+    }
+  }, []);
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+    fetchDashboardData();
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('username');
+    setIsAuthenticated(false);
+    setDashboardData(null);
+    setHistoryData([]);
+  };
+
+  // --- Data Fetching ---
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
@@ -31,7 +54,6 @@ function App() {
     }
   };
 
-  // --- Fetch History Data ---
   const fetchHistoryData = async () => {
     try {
       const response = await api.getHistory();
@@ -41,15 +63,12 @@ function App() {
     }
   };
 
+  // Fetch History when tab changes
   useEffect(() => {
-    fetchDashboardData();
-  }, []);
-
-  useEffect(() => {
-    if (activeTab === 'history') {
+    if (isAuthenticated && activeTab === 'history') {
         fetchHistoryData();
     }
-  }, [activeTab]);
+  }, [activeTab, isAuthenticated]);
 
   const handleDownloadPDF = async () => {
     try {
@@ -67,29 +86,7 @@ function App() {
     }
   };
 
-  useEffect(() => {
-    const token = localStorage.getItem('auth_token');
-    if (token) {
-        setIsAuthenticated(true);
-        fetchDashboardData(); 
-    }
-  }, []);
-
-  const handleLoginSuccess = () => {
-    setIsAuthenticated(true);
-    fetchDashboardData();
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('auth_token');
-    setIsAuthenticated(false);
-    setDashboardData(null);
-  };
-
-  if (!isAuthenticated) {
-    return <Auth onLoginSuccess={handleLoginSuccess} />;
-  }
-
+  // --- Render Content ---
   const renderContent = () => {
     if (loading) return <div className="p-10 text-center">Loading...</div>;
 
@@ -146,7 +143,7 @@ function App() {
             </div>
         );
 
-      case 'history': // New Tab Logic
+      case 'history':
         return (
             <div className="space-y-6 animate-in slide-in-from-left duration-300">
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -162,16 +159,27 @@ function App() {
     }
   };
 
+  // --- Auth Guard ---
+  if (!isAuthenticated) {
+      return <Auth onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="bg-slate-50 min-h-screen font-sans text-slate-900 flex">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="flex-1 ml-64 transition-all duration-300">
         <header className="bg-white h-16 border-b border-slate-200 sticky top-0 z-40 px-8 flex items-center justify-between shadow-sm">
-          <h1 className="text-xl font-bold text-slate-800 capitalize tracking-tight">{activeTab}</h1>
-          <button onClick={handleLogout} className="text-xs font-bold text-red-500 border border-red-200 px-3 py-1 rounded-full hover:bg-red-50">LOG OUT</button>
+            <h1 className="text-xl font-bold text-slate-800 capitalize tracking-tight">{activeTab}</h1>
+            
+            <button 
+                onClick={handleLogout} 
+                className="flex items-center gap-2 text-xs font-bold text-red-500 border border-red-200 px-3 py-1.5 rounded-full hover:bg-red-50 transition-colors"
+            >
+                <LogOut size={14} /> LOG OUT
+            </button>
         </header>
         <main className="p-8 max-w-7xl mx-auto">
-          {renderContent()}
+            {renderContent()}
         </main>
       </div>
     </div>
