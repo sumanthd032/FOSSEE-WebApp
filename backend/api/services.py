@@ -8,45 +8,52 @@ from io import BytesIO
 
 def process_csv_file(file_obj):
     """
-    Parses CSV, calculates stats, and saves to DB using Pandas.
+    Parses CSV, calculates stats, saves to DB, and ensures only the last 5 uploads are kept.
     """
     try:
-        # Read CSV using Pandas
+        # 1. Read CSV using Pandas
         df = pd.read_csv(file_obj)
         
-        # Standardize column names 
+        # Standardize column names (optional cleaning)
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
         
-        # Calculate Statistics
+        # 2. Calculate Statistics
         stats = {
             'total_records': len(df),
-            'avg_flowrate': df['flowrate'].mean(),
-            'avg_pressure': df['pressure'].mean(),
-            'avg_temperature': df['temperature'].mean(),
+            'avg_flowrate': df['flowrate'].mean() if 'flowrate' in df else 0,
+            'avg_pressure': df['pressure'].mean() if 'pressure' in df else 0,
+            'avg_temperature': df['temperature'].mean() if 'temperature' in df else 0,
         }
         
-        # Create History Record
-        history = UploadHistory.objects.create(
-            file_name=file_obj.name,
-            **stats
-        )
-        
-        # Bulk Create Equipment Records
-        equipment_instances = [
-            Equipment(
-                upload=history,
-                equipment_id=row.get('equipment_id', f"EQ-{i}"),
-                name=row.get('equipment_name', 'Unknown'),
-                type=row.get('type', 'Generic'),
-                flowrate=row.get('flowrate', 0.0),
-                pressure=row.get('pressure', 0.0),
-                temperature=row.get('temperature', 0.0)
+        # 3. Atomic Transaction (Ensures Data Integrity)
+        with transaction.atomic():
+            # Create History Record
+            history = UploadHistory.objects.create(
+                file_name=file_obj.name,
+                **stats
             )
-            for i, row in df.iterrows()
-        ]
-        
-        Equipment.objects.bulk_create(equipment_instances)
-        
+            
+            # Bulk Create Equipment Records
+            equipment_instances = [
+                Equipment(
+                    upload=history,
+                    equipment_id=row.get('equipment_id', f"EQ-{i}"),
+                    name=row.get('equipment_name', 'Unknown'),
+                    type=row.get('type', 'Generic'),
+                    flowrate=row.get('flowrate', 0.0),
+                    pressure=row.get('pressure', 0.0),
+                    temperature=row.get('temperature', 0.0)
+                )
+                for i, row in df.iterrows()
+            ]
+            Equipment.objects.bulk_create(equipment_instances)
+
+            # Get IDs of the newest 5 records
+            last_5_ids = UploadHistory.objects.order_by('-uploaded_at').values_list('id', flat=True)[:5]
+            
+            # Delete anything that is NOT in that list
+            UploadHistory.objects.exclude(id__in=last_5_ids).delete()
+            
         return history
         
     except Exception as e:

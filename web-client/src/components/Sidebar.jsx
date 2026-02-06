@@ -1,16 +1,16 @@
 import React from 'react';
-import { LayoutDashboard, PieChart, Database } from 'lucide-react';
+import { LayoutDashboard, PieChart, Database, History } from 'lucide-react';
 
 const Sidebar = ({ activeTab, setActiveTab }) => {
   const menuItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'analytics', label: 'Analytics', icon: PieChart },
     { id: 'data', label: 'Data Logs', icon: Database },
+    { id: 'history', label: 'History', icon: History },
   ];
 
   return (
     <div className="w-64 bg-slate-900 h-screen fixed left-0 top-0 flex flex-col text-white shadow-xl z-50">
-      {/* App Title */}
       <div className="h-16 flex items-center px-4 border-b border-slate-800">
         <div className="w-8 h-8 bg-blue-700 rounded-lg flex items-center justify-center mr-3 font-bold text-xs">
           CEV
@@ -20,7 +20,6 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
         </span>
       </div>
 
-      {/* Navigation Menu */}
       <nav className="flex-1 py-6 px-3 space-y-1">
         {menuItems.map((item) => {
           const Icon = item.icon;
@@ -42,9 +41,8 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
         })}
       </nav>
       
-      {/* Footer Info */}
       <div className="p-6 border-t border-slate-800 text-xs text-slate-500">
-        FOSSEE IIT Bombay<br/>2024 &copy; All rights reserved.
+        FOSSEE @ IIT Bombay<br/>2026 &copy; All rights reserved.
       </div>
     </div>
   );
