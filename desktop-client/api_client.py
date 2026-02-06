@@ -33,3 +33,16 @@ class APIClient:
                 return False, f"Upload Failed: {response.text}"
         except Exception as e:
             return False, str(e)
+        
+    @staticmethod
+    def download_pdf(save_path):
+        """Downloads the PDF and saves it to the specified path."""
+        try:
+            with requests.get(f"{BASE_URL}/report/pdf/", stream=True) as r:
+                r.raise_for_status()
+                with open(save_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+            return True, "Download Complete"
+        except Exception as e:
+            return False, str(e)

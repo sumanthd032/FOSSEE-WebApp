@@ -29,7 +29,14 @@ export const api = {
     // Get Upload History
     getHistory: async () => {
         return apiClient.get('/history/');
-    }
-};
+    },
+
+    downloadPDF: async () => {
+        return apiClient.get('/report/pdf/', {
+            responseType: 'blob', 
+        });
+    },
+
+}
 
 export default api;

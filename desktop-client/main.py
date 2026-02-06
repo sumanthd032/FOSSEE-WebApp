@@ -60,12 +60,31 @@ class MainWindow(QMainWindow):
 
         # Styling buttons slightly differently
         self.btn_upload.setProperty('class', 'success')
+
+        self.btn_export = QPushButton("Export PDF")
+        self.btn_export.setCursor(Qt.PointingHandCursor)
+        self.btn_export.clicked.connect(self.handle_export)
+        self.btn_export.setProperty('class', 'warning') 
         
         layout.addWidget(self.btn_upload)
         layout.addWidget(self.btn_refresh)
+        layout.addWidget(self.btn_export) 
         layout.addStretch()
-        
         self.main_layout.addWidget(controls)
+
+    def handle_export(self):
+        # Open Save Dialog
+        path, _ = QFileDialog.getSaveFileName(self, "Save Report", "report.pdf", "PDF Files (*.pdf)")
+        if path:
+            self.status_label.setText("Downloading PDF...")
+            success, msg = APIClient.download_pdf(path)
+            if success:
+                QMessageBox.information(self, "Success", f"Report saved to {path}")
+            else:
+                QMessageBox.critical(self, "Error", msg)
+            self.status_label.setText("Ready.")
+
+    
 
     def handle_upload_click(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV Files (*.csv)")

@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status, generics
 from django.db.models import Count
+from django.http import HttpResponse
+from .services import generate_pdf_report
 
 from .models import UploadHistory, Equipment
 from .serializers import UploadHistorySerializer, EquipmentSerializer
@@ -60,3 +62,18 @@ class HistoryListView(generics.ListAPIView):
     """
     queryset = UploadHistory.objects.order_by('-uploaded_at')[:5]
     serializer_class = UploadHistorySerializer
+
+
+class PDFReportView(APIView):
+    def get(self, request, *args, **kwargs):
+        # For simplicity, getting the latest one. 
+        # In a real app, pass the ID as a URL param.
+        latest = UploadHistory.objects.order_by('-uploaded_at').first()
+        if not latest:
+            return Response({"error": "No data found"}, status=404)
+            
+        pdf_buffer = generate_pdf_report(latest.id)
+        
+        response = HttpResponse(pdf_buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="report_{latest.id}.pdf"'
+        return response

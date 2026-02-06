@@ -5,6 +5,7 @@ import StatsCards from './components/StatsCards';
 import { api } from './services/api';
 import ChartsSection from './components/ChartsSection';
 import DataTable from './components/DataTable';
+import { Download } from 'lucide-react';
 
 function App() {
   const [dashboardData, setDashboardData] = useState(null);
@@ -29,6 +30,31 @@ function App() {
   useEffect(() => {
     fetchDashboardData();
   }, []);
+
+  const handleDownload = async () => {
+    try {
+        const response = await api.downloadPDF();
+        // Create a fake link to trigger download
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'equipment_report.pdf');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    } catch (e) {
+        console.error("Download failed", e);
+    }
+};
+
+  // Add Button next to Stats or Header
+  <button 
+    onClick={handleDownload}
+    className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors"
+  >
+    <Download size={18} />
+    Download PDF
+  </button>
 
   return (
     <Layout>
