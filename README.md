@@ -1,4 +1,4 @@
-# Chemical Equipment Visualizer (Hybrid Web + Desktop)
+# Chemical Equipment Visualizer 
 
 A hybrid data analytics platform for visualizing chemical equipment parameters.
 
