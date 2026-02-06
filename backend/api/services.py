@@ -4,20 +4,17 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
+from django.db import transaction
 from io import BytesIO
 
-def process_csv_file(file_obj):
+def process_csv_file(file_obj, user): 
     """
-    Parses CSV, calculates stats, saves to DB, and ensures only the last 5 uploads are kept.
+    Parses CSV, assigns to USER, calculates stats, and enforces per-user 5-dataset limit.
     """
     try:
-        # 1. Read CSV using Pandas
         df = pd.read_csv(file_obj)
-        
-        # Standardize column names (optional cleaning)
         df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
         
-        # 2. Calculate Statistics
         stats = {
             'total_records': len(df),
             'avg_flowrate': df['flowrate'].mean() if 'flowrate' in df else 0,
@@ -25,15 +22,13 @@ def process_csv_file(file_obj):
             'avg_temperature': df['temperature'].mean() if 'temperature' in df else 0,
         }
         
-        # 3. Atomic Transaction (Ensures Data Integrity)
         with transaction.atomic():
-            # Create History Record
             history = UploadHistory.objects.create(
+                user=user, 
                 file_name=file_obj.name,
                 **stats
             )
             
-            # Bulk Create Equipment Records
             equipment_instances = [
                 Equipment(
                     upload=history,
@@ -48,11 +43,10 @@ def process_csv_file(file_obj):
             ]
             Equipment.objects.bulk_create(equipment_instances)
 
-            # Get IDs of the newest 5 records
-            last_5_ids = UploadHistory.objects.order_by('-uploaded_at').values_list('id', flat=True)[:5]
+            user_uploads = UploadHistory.objects.filter(user=user).order_by('-uploaded_at')
+            last_5_ids = user_uploads.values_list('id', flat=True)[:5]
             
-            # Delete anything that is NOT in that list
-            UploadHistory.objects.exclude(id__in=last_5_ids).delete()
+            UploadHistory.objects.filter(user=user).exclude(id__in=last_5_ids).delete()
             
         return history
         
