@@ -3,6 +3,8 @@ import Layout from './components/Layout';
 import FileUploader from './components/FileUploader';
 import StatsCards from './components/StatsCards';
 import { api } from './services/api';
+import ChartsSection from './components/ChartsSection';
+import DataTable from './components/DataTable';
 
 function App() {
   const [dashboardData, setDashboardData] = useState(null);
@@ -47,10 +49,14 @@ function App() {
           <>
             <StatsCards data={dashboardData.summary} />
             
-            {/* Placeholder for Charts & Tables  */}
-            <div className="bg-white p-6 rounded-xl border border-gray-100 text-center text-gray-400">
-              Charts and Data Tables will appear here in the next step.
-            </div>
+            {/* Charts Area */}
+            <ChartsSection 
+              distribution={dashboardData.distribution} 
+              equipmentList={dashboardData.equipment_list} 
+            />
+
+            {/* Data Table Area */}
+            <DataTable data={dashboardData.equipment_list} />
           </>
         ) : (
           <div className="text-center py-10 bg-white rounded-xl border border-gray-100">
