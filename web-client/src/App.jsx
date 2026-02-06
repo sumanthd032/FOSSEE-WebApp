@@ -1,23 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import Layout from './components/Layout';
+import Sidebar from './components/Sidebar';
 import FileUploader from './components/FileUploader';
 import StatsCards from './components/StatsCards';
-import { api } from './services/api';
 import ChartsSection from './components/ChartsSection';
 import DataTable from './components/DataTable';
-import { Download } from 'lucide-react';
+import AnalyticsCharts from './components/AnalyticsCharts';
+import { api } from './services/api';
+import { FileDown } from 'lucide-react';
 
 function App() {
+  const [activeTab, setActiveTab] = useState('overview');
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // --- Data Fetching ---
   const fetchDashboardData = async () => {
+    setLoading(true);
     try {
       const response = await api.getDashboardData();
-      // Handle the case where backend returns 204 (No Content)
-      if (response.status === 204) {
-        setDashboardData(null);
-      } else {
+      if (response.status !== 204) {
         setDashboardData(response.data);
       }
     } catch (error) {
@@ -31,66 +32,125 @@ function App() {
     fetchDashboardData();
   }, []);
 
-  const handleDownload = async () => {
+  // --- PDF Download Logic ---
+  const handleDownloadPDF = async () => {
     try {
-        const response = await api.downloadPDF();
-        // Create a fake link to trigger download
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', 'equipment_report.pdf');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
+      const response = await api.downloadPDF();
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'equipment_report.pdf');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
     } catch (e) {
-        console.error("Download failed", e);
+      console.error("Download failed", e);
+      alert("Failed to download PDF.");
     }
-};
+  };
 
-  // Add Button next to Stats or Header
-  <button 
-    onClick={handleDownload}
-    className="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-800 transition-colors"
-  >
-    <Download size={18} />
-    Download PDF
-  </button>
+  // --- Render Content ---
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <div className="flex h-96 items-center justify-center text-slate-400">
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <p>Loading Data...</p>
+          </div>
+        </div>
+      );
+    }
+
+    if (!dashboardData) {
+      return (
+        <div className="text-center py-20 bg-white rounded-xl border border-slate-200 shadow-sm">
+          <h3 className="text-lg font-medium text-slate-900">No Data Available</h3>
+          <p className="text-slate-500 mb-6">Upload a CSV file to begin analysis.</p>
+          <div className="max-w-md mx-auto">
+            <FileUploader onUploadSuccess={fetchDashboardData} />
+          </div>
+        </div>
+      );
+    }
+
+    switch (activeTab) {
+      case 'overview':
+        return (
+          <div className="space-y-8 animate-in fade-in duration-500">
+            
+            {/* 1. Stats Row (Top) */}
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">Key Performance Indicators</h3>
+              <StatsCards data={dashboardData.summary} />
+            </div>
+
+            {/* 2. Charts Row (Middle) - Full Width Fix */}
+            <div>
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">Visual Trends</h3>
+              {/* Removed the extra grid wrapper here. ChartsSection now takes full width. */}
+              <ChartsSection distribution={dashboardData.distribution} equipmentList={dashboardData.equipment_list} />
+            </div>
+
+            {/* 3. Upload Row (Bottom) */}
+            <div className="bg-white rounded-xl border border-slate-200 p-6 shadow-sm">
+                  <h3 className="font-semibold text-slate-800 mb-4">Upload New Data</h3>
+                  <FileUploader onUploadSuccess={fetchDashboardData} compact={false} />
+            </div>
+          </div>
+        );
+
+      case 'analytics':
+        return (
+            <div className="space-y-6 animate-in slide-in-from-right duration-300">
+                <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+                     <h2 className="text-xl font-bold text-slate-800">Analytics & Reports</h2>
+                     <button 
+                        onClick={handleDownloadPDF}
+                        className="flex items-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+                     >
+                        <FileDown size={16} />
+                        Download PDF Report
+                     </button>
+                </div>
+
+                {/* Advanced Charts */}
+                <AnalyticsCharts equipmentList={dashboardData.equipment_list} />
+                
+                <h3 className="text-lg font-semibold text-slate-800 mt-8">Type Distribution</h3>
+                <ChartsSection distribution={dashboardData.distribution} equipmentList={dashboardData.equipment_list} />
+            </div>
+        );
+
+      case 'data':
+        return (
+            <div className="space-y-6 animate-in slide-in-from-bottom duration-300">
+                <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                    <h2 className="text-xl font-bold text-slate-800">Raw Data Logs</h2>
+                </div>
+                <DataTable data={dashboardData.equipment_list} />
+            </div>
+        );
+
+      default:
+        return null;
+    }
+  };
 
   return (
-    <Layout>
-      <div className="max-w-6xl mx-auto">
-        {/* Header Section */}
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-900">Equipment Dashboard</h2>
-          <p className="text-gray-500">Upload CSV logs to analyze performance metrics.</p>
-        </div>
+    <div className="bg-slate-50 min-h-screen font-sans text-slate-900 flex">
+      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
 
-        {/* Upload Section */}
-        <FileUploader onUploadSuccess={fetchDashboardData} />
+      <div className="flex-1 ml-64 transition-all duration-300">
+        <header className="bg-white h-16 border-b border-slate-200 sticky top-0 z-40 px-8 flex items-center shadow-sm">
+            <h1 className="text-xl font-bold text-slate-800 capitalize tracking-tight">{activeTab}</h1>
+        </header>
 
-        {/* Stats Section */}
-        {loading ? (
-           <div className="text-center py-10 text-gray-500">Loading data...</div>
-        ) : dashboardData ? (
-          <>
-            <StatsCards data={dashboardData.summary} />
-            
-            {/* Charts Area */}
-            <ChartsSection 
-              distribution={dashboardData.distribution} 
-              equipmentList={dashboardData.equipment_list} 
-            />
-
-            {/* Data Table Area */}
-            <DataTable data={dashboardData.equipment_list} />
-          </>
-        ) : (
-          <div className="text-center py-10 bg-white rounded-xl border border-gray-100">
-             <p className="text-gray-500">No data found. Upload a file to get started.</p>
-          </div>
-        )}
+        <main className="p-8 max-w-7xl mx-auto">
+            {renderContent()}
+        </main>
       </div>
-    </Layout>
+    </div>
   );
 }
 
