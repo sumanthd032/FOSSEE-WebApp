@@ -4,7 +4,7 @@ A hybrid data analytics platform designed for monitoring and visualizing chemica
 
 This monorepo architecture integrates a robust Django backend with two distinct client frontends: a modern React web application and a native PyQt5 desktop application.
 
-## 🚀 Features
+## Features
 
 ### Core Functionality
 
@@ -24,7 +24,7 @@ This monorepo architecture integrates a robust Django backend with two distinct 
 
 - **PDF Generation:** One-click generation of professional PDF summary reports containing statistical overviews and data snapshots.
 
-## 🛠 Tech Stack
+## Tech Stack
 
 | Component | Technologies |
 | --- | --- |
@@ -32,7 +32,7 @@ This monorepo architecture integrates a robust Django backend with two distinct 
 | Web Client | React 18, Vite, Tailwind CSS, Lucide Icons, Chart.js, Axios |
 | Desktop Client | Python, PyQt5, Matplotlib, Requests, Qt-Material |
 
-## 📦 Installation & Setup
+## Installation & Setup
 
 ### Prerequisites
 
