@@ -1,82 +1,105 @@
 import sys
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QLabel, QHBoxLayout, QFrame)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
+                             QLabel, QHBoxLayout, QFrame, QPushButton, QFileDialog, QMessageBox)
 from PyQt5.QtCore import Qt
 from qt_material import apply_stylesheet
+from workers import UploadWorker, DataFetchWorker
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-
-        # Window Configuration
         self.setWindowTitle("Chemical Equipment Visualizer (Desktop)")
-        self.setGeometry(100, 100, 1280, 800) # HD Resolution start
+        self.setGeometry(100, 100, 1280, 800)
 
-        # Main Central Widget
+        # Main Layout Setup
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
-        self.main_layout.setSpacing(0)
-
-        # 1. Setup Header (To mimic the Web Navbar)
+        
         self.setup_header()
-
-        # 2. Content Area (Placeholder)
+        self.setup_controls() # New Control Bar
+        
+        # Content Area
         self.content_area = QWidget()
         self.content_layout = QVBoxLayout(self.content_area)
-        self.content_layout.setContentsMargins(20, 20, 20, 20)
-        
-        # Placeholder text
-        welcome_label = QLabel("Welcome to the Desktop Dashboard")
-        welcome_label.setAlignment(Qt.AlignCenter)
-        welcome_label.setStyleSheet("font-size: 24px; color: #555; font-weight: bold;")
-        self.content_layout.addWidget(welcome_label)
-        
         self.main_layout.addWidget(self.content_area)
+        
+        # Initial Placeholder
+        self.status_label = QLabel("Ready. Click 'Upload CSV' to begin.")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        self.content_layout.addWidget(self.status_label)
 
     def setup_header(self):
-        """Creates a custom header bar to match the Web UI."""
+        # (Same as Step 6)
         header = QFrame()
-        header.setStyleSheet("""
-            QFrame {
-                background-color: #ffffff;
-                border-bottom: 1px solid #e0e0e0;
-            }
-        """)
+        header.setStyleSheet("background-color: #ffffff; border-bottom: 1px solid #e0e0e0;")
         header.setFixedHeight(70)
-        header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(20, 0, 20, 0)
-
-        # Logo/Title Area
-        title_label = QLabel("Chemical Visualizer")
-        title_label.setStyleSheet("""
-            font-size: 20px;
-            font-weight: bold;
-            color: #1976D2;  /* Match Web Blue */
-        """)
-        
-        subtitle_label = QLabel("Hybrid Desktop Client")
-        subtitle_label.setStyleSheet("color: #757575; font-size: 14px;")
-
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
-        header_layout.addWidget(subtitle_label)
-
+        layout = QHBoxLayout(header)
+        title = QLabel("Chemical Visualizer")
+        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #1976D2;")
+        layout.addWidget(title)
         self.main_layout.addWidget(header)
 
+    def setup_controls(self):
+        """Creates the toolbar with action buttons."""
+        controls = QFrame()
+        layout = QHBoxLayout(controls)
+        layout.setContentsMargins(20, 10, 20, 10)
+        
+        # Upload Button
+        self.btn_upload = QPushButton("Upload CSV")
+        self.btn_upload.setCursor(Qt.PointingHandCursor)
+        self.btn_upload.clicked.connect(self.handle_upload_click)
+        
+        # Refresh Button
+        self.btn_refresh = QPushButton("Refresh Data")
+        self.btn_refresh.setCursor(Qt.PointingHandCursor)
+        self.btn_refresh.clicked.connect(self.refresh_data)
+
+        # Styling buttons slightly differently
+        self.btn_upload.setProperty('class', 'success')
+        
+        layout.addWidget(self.btn_upload)
+        layout.addWidget(self.btn_refresh)
+        layout.addStretch()
+        
+        self.main_layout.addWidget(controls)
+
+    def handle_upload_click(self):
+        file_path, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV Files (*.csv)")
+        if file_path:
+            self.status_label.setText(f"Uploading {file_path}...")
+            
+            # Start Background Thread
+            self.upload_worker = UploadWorker(file_path)
+            self.upload_worker.finished.connect(self.on_upload_finished)
+            self.upload_worker.start()
+
+    def on_upload_finished(self, success, message):
+        if success:
+            QMessageBox.information(self, "Success", message)
+            self.refresh_data() # Auto-refresh after upload
+        else:
+            QMessageBox.critical(self, "Error", message)
+            self.status_label.setText("Upload Failed.")
+
+    def refresh_data(self):
+        self.status_label.setText("Fetching data from server...")
+        
+        self.data_worker = DataFetchWorker()
+        self.data_worker.data_ready.connect(self.on_data_received)
+        self.data_worker.error_occurred.connect(lambda msg: self.status_label.setText(msg))
+        self.data_worker.start()
+
+    def on_data_received(self, data):
+        count = data['summary']['total_records']
+        self.status_label.setText(f"Data Loaded! Total Records: {count}\n(Charts coming in Step 8)")
+        print("Data Received:", data['summary'])
+
 if __name__ == "__main__":
-    # Create the App
     app = QApplication(sys.argv)
-
-    # Apply Material Theme
     apply_stylesheet(app, theme='light_blue.xml')
-
-    # Custom tweaks to fix any theme oddities
-    app.setStyleSheet(app.styleSheet() + """
-        QMainWindow { background-color: #f5f5f5; }
-    """)
-
     window = MainWindow()
     window.show()
-
     sys.exit(app.exec_())
