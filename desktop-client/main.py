@@ -4,6 +4,7 @@ from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt5.QtCore import Qt
 from qt_material import apply_stylesheet
 from workers import UploadWorker, DataFetchWorker
+from charts import DashboardCharts
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -96,6 +97,31 @@ class MainWindow(QMainWindow):
         count = data['summary']['total_records']
         self.status_label.setText(f"Data Loaded! Total Records: {count}\n(Charts coming in Step 8)")
         print("Data Received:", data['summary'])
+
+    def on_data_received(self, data):
+        # Clear current content in content_layout
+        while self.content_layout.count():
+            item = self.content_layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+
+        # Create Summary Text 
+        summary = data['summary']
+        stats_text = (f"Total Records: {summary['total_records']} | "
+                      f"Avg Flow: {summary['avg_flowrate']:.2f} | "
+                      f"Avg Pressure: {summary['avg_pressure']:.2f}")
+        
+        stats_label = QLabel(stats_text)
+        stats_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #333; padding: 10px;")
+        stats_label.setAlignment(Qt.AlignCenter)
+        self.content_layout.addWidget(stats_label)
+
+        # Add Charts Widget
+        self.charts_widget = DashboardCharts(data)
+        self.content_layout.addWidget(self.charts_widget)
+        
+        self.status_label.setText("Dashboard Updated.")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
