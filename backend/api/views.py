@@ -4,6 +4,9 @@ from rest_framework import status, generics
 from django.db.models import Count
 from django.http import HttpResponse
 from .services import generate_pdf_report
+from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
+from .serializers import UserSerializer
 
 from .models import UploadHistory, Equipment
 from .serializers import UploadHistorySerializer, EquipmentSerializer
@@ -75,3 +78,14 @@ class PDFReportView(APIView):
         response = HttpResponse(pdf_buffer, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="report_{latest.id}.pdf"'
         return response
+    
+class RegisterView(generics.CreateAPIView):
+    queryset = User.objects.all()
+    permission_classes = [] 
+    serializer_class = UserSerializer
+
+    def create(self, request, *args, **kwargs):
+        response = super().create(request, *args, **kwargs)
+        user = User.objects.get(username=response.data['username'])
+        token, created = Token.objects.get_or_create(user=user)
+        return Response({'token': token.key, 'user_id': user.id, 'username': user.username}, status=status.HTTP_201_CREATED)
