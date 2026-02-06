@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+venv/
+.env
+*.sqlite3
+
+# Node/Web
+node_modules/
+dist/
+build/
+.DS_Store
+
+# PyInstaller
+*.spec
