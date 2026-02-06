@@ -1,5 +1,5 @@
 import matplotlib
-matplotlib.use('Qt5Agg')
+matplotlib.use('Qt5Agg') # Force Qt5 Backend
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from PyQt5.QtWidgets import QWidget, QVBoxLayout
@@ -16,6 +16,7 @@ class DashboardCharts(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
+        # Create Canvas
         self.canvas = MplCanvas(self, width=10, height=8, dpi=100)
         layout.addWidget(self.canvas)
         
@@ -24,31 +25,30 @@ class DashboardCharts(QWidget):
     def plot_charts(self, data):
         self.canvas.fig.clear()
 
-        # 1. Doughnut Chart (Left/Top)
-        ax1 = self.canvas.fig.add_subplot(211)
-        
-        if 'distribution' in data:
+        # 1. Doughnut Chart (Distribution)
+        if 'distribution' in data and data['distribution']:
+            ax1 = self.canvas.fig.add_subplot(211)
             types = [d['type'] for d in data['distribution']]
             counts = [d['count'] for d in data['distribution']]
-            colors = ['#1976D2', '#D32F2F', '#388E3C', '#FBC02D', '#7B1FA2']
+            # Modern colors
+            colors = ['#1E88E5', '#E53935', '#43A047', '#FB8C00', '#8E24AA']
             
-            wedges, texts, autotexts = ax1.pie(counts, labels=types, autopct='%1.1f%%', 
-                                               colors=colors, startangle=90, 
-                                               wedgeprops=dict(width=0.4)) # Doughnut style
-            ax1.set_title("Equipment Type Distribution", fontsize=12, fontweight='bold')
+            ax1.pie(counts, labels=types, autopct='%1.1f%%', colors=colors, startangle=90, wedgeprops=dict(width=0.4))
+            ax1.set_title("Equipment Type Distribution", fontsize=10, fontweight='bold', pad=10)
 
-        # 2. Bar Chart (Right/Bottom)
-        ax2 = self.canvas.fig.add_subplot(212)
-        
-        if 'equipment_list' in data:
+        # 2. Bar Chart (Top Pressures)
+        if 'equipment_list' in data and data['equipment_list']:
+            ax2 = self.canvas.fig.add_subplot(212)
+            # Sort top 5 by pressure
             sorted_equip = sorted(data['equipment_list'], key=lambda x: x['pressure'], reverse=True)[:5]
+            
             names = [d['name'] for d in sorted_equip]
             pressures = [d['pressure'] for d in sorted_equip]
             
-            ax2.bar(names, pressures, color='#5C6BC0')
+            ax2.bar(names, pressures, color='#3949AB', alpha=0.8)
             ax2.set_ylabel("Pressure (bar)")
-            ax2.set_title("Top 5 Critical Pressure Levels", fontsize=12, fontweight='bold')
-            ax2.grid(True, axis='y', linestyle='--', alpha=0.5)
+            ax2.set_title("Critical Pressure Levels (Top 5)", fontsize=10, fontweight='bold', pad=10)
+            ax2.grid(True, axis='y', linestyle='--', alpha=0.3)
 
-        self.canvas.fig.tight_layout(pad=3.0)
+        self.canvas.fig.tight_layout(pad=2.0)
         self.canvas.draw()

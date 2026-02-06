@@ -1,370 +1,320 @@
 import sys
 import os
+# 
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QLabel, QHBoxLayout, QFrame, QPushButton, QFileDialog, 
                              QMessageBox, QDialog, QStackedWidget, QTableWidget, 
-                             QTableWidgetItem, QScrollArea)
-from PyQt5.QtCore import Qt
-from qt_material import apply_stylesheet
+                             QTableWidgetItem, QScrollArea, QLineEdit)
+from PyQt5.QtCore import Qt, QThread, pyqtSignal
+
+# Optional: Theme (Wrapped in try/catch to prevent crashes if missing)
+try:
+    from qt_material import apply_stylesheet
+    HAS_THEME = True
+except ImportError:
+    HAS_THEME = False
 
 # Import Custom Modules
-from workers import UploadWorker, DataFetchWorker
 from api_client import APIClient
-from login import LoginWindow
 from charts import DashboardCharts 
 
+# --- WORKER THREADS (For Non-Blocking UI) ---
+class UploadWorker(QThread):
+    finished = pyqtSignal(bool, str)
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+    def run(self):
+        success, msg = APIClient.upload_file(self.path)
+        self.finished.emit(success, msg)
+
+class DataFetchWorker(QThread):
+    data_ready = pyqtSignal(dict)
+    history_ready = pyqtSignal(list)
+    error_occurred = pyqtSignal(str)
+
+    def run(self):
+        # 1. Fetch Dashboard
+        dash = APIClient.get_dashboard_data()
+        if dash:
+            self.data_ready.emit(dash)
+        else:
+            self.error_occurred.emit("No Data or Connection Failed")
+        
+        # 2. Fetch History
+        hist = APIClient.get_history()
+        if hist:
+            self.history_ready.emit(hist)
+
+# --- LOGIN WINDOW ---
+class LoginWindow(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Login")
+        self.setFixedSize(300, 250)
+        self.setStyleSheet("background-color: white; color: #333;")
+        
+        layout = QVBoxLayout(self)
+        layout.setSpacing(15)
+        
+        layout.addWidget(QLabel("Chemical Visualizer Login").setStyleSheet("font-weight: bold; font-size: 16px;"))
+        
+        self.user_in = QLineEdit()
+        self.user_in.setPlaceholderText("Username")
+        self.pass_in = QLineEdit()
+        self.pass_in.setPlaceholderText("Password")
+        self.pass_in.setEchoMode(QLineEdit.Password)
+        
+        layout.addWidget(self.user_in)
+        layout.addWidget(self.pass_in)
+        
+        btn = QPushButton("Sign In")
+        btn.setStyleSheet("background-color: #1976D2; color: white; padding: 8px; font-weight: bold;")
+        btn.clicked.connect(self.do_login)
+        layout.addWidget(btn)
+
+    def do_login(self):
+        u = self.user_in.text()
+        p = self.pass_in.text()
+        if not u or not p: return
+        
+        res = APIClient.login(u, p)
+        if res and 'token' in res:
+            APIClient.set_token(res['token'])
+            self.accept()
+        else:
+            QMessageBox.critical(self, "Error", "Invalid Credentials")
+
+# --- MAIN WINDOW ---
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Chemical Equipment Visualizer (Desktop)")
         self.setGeometry(100, 100, 1366, 768)
 
-        # Main Horizontal Layout (Sidebar + Content)
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QHBoxLayout(self.central_widget)
         self.main_layout.setContentsMargins(0, 0, 0, 0)
         self.main_layout.setSpacing(0)
 
-        # 1. Sidebar Navigation
+        # 1. Sidebar
         self.setup_sidebar()
 
-        # 2. Main Content Area (Stacked Tabs)
+        # 2. Content Stack
         self.content_stack = QStackedWidget()
         self.main_layout.addWidget(self.content_stack)
 
-        # 3. Footer / Status Bar
-        self.statusBar = self.statusBar()
-        self.status_label = QLabel("Ready.")
-        self.status_label.setStyleSheet("color: #666; padding-left: 10px; font-weight: bold;")
-        self.statusBar.addWidget(self.status_label)
-
-        # Initialize Tab Views
+        # Init Tabs
         self.init_overview_tab()
         self.init_analytics_tab()
         self.init_data_tab()
         self.init_history_tab()
+
+        # Status Bar
+        self.statusBar = self.statusBar()
+        self.status_label = QLabel("Ready")
+        self.statusBar.addWidget(self.status_label)
 
         # Load Data
         self.refresh_data()
 
     def setup_sidebar(self):
         sidebar = QFrame()
-        sidebar.setFixedWidth(260)
-        sidebar.setStyleSheet("background-color: #1a2327; border-right: 1px solid #2c3e50;")
+        sidebar.setFixedWidth(240)
+        sidebar.setStyleSheet("background-color: #263238; color: white;")
         layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(10)
-
-        # Brand Header
-        brand_box = QFrame()
-        brand_box.setFixedHeight(80)
-        brand_box.setStyleSheet("background-color: #0d1117; border-bottom: 1px solid #2c3e50;")
-        brand_layout = QHBoxLayout(brand_box)
-        brand_label = QLabel("CEV Desktop")
-        brand_label.setStyleSheet("color: white; font-size: 20px; font-weight: bold; letter-spacing: 1px;")
-        brand_layout.addWidget(brand_label)
-        layout.addWidget(brand_box)
-
-        # Navigation Buttons
+        
+        layout.addWidget(QLabel("CEV Desktop").setStyleSheet("font-size: 20px; font-weight: bold; padding: 10px;"))
+        
         self.nav_btns = []
         labels = ["Overview", "Analytics", "Data Logs", "History"]
-        
-        for i, label in enumerate(labels):
-            btn = QPushButton(label)
-            btn.setFixedHeight(50)
-            btn.setCursor(Qt.PointingHandCursor)
-            btn.setStyleSheet("""
-                QPushButton {
-                    text-align: left; padding-left: 25px; color: #90a4ae; 
-                    background-color: transparent; border: none; font-size: 14px; font-weight: 500;
-                }
-                QPushButton:hover { background-color: #263238; color: white; }
-                QPushButton:checked { background-color: #1976D2; color: white; border-left: 4px solid #64B5F6;}
-            """)
+        for i, lbl in enumerate(labels):
+            btn = QPushButton(lbl)
             btn.setCheckable(True)
+            btn.setStyleSheet("""
+                QPushButton { text-align: left; padding: 15px; border: none; background: transparent; color: #b0bec5; font-weight: bold;}
+                QPushButton:checked { color: white; background-color: #37474f; border-left: 4px solid #42a5f5; }
+                QPushButton:hover { color: white; }
+            """)
+            btn.clicked.connect(lambda _, x=i: self.switch_tab(x))
             if i == 0: btn.setChecked(True)
-            btn.clicked.connect(lambda checked, idx=i: self.switch_tab(idx))
-            self.nav_btns.append(btn)
             layout.addWidget(btn)
-
+            self.nav_btns.append(btn)
+            
         layout.addStretch()
+        layout.addWidget(QPushButton("Log Out", clicked=self.close).setStyleSheet("color: #ef5350; padding: 20px; border: none; font-weight: bold;"))
         
-        # Logout Button
-        btn_logout = QPushButton("Log Out")
-        btn_logout.setStyleSheet("""
-            QPushButton { color: #ef5350; background: transparent; border: none; padding: 20px; text-align: left; font-weight: bold; }
-            QPushButton:hover { background-color: #2c1a1a; }
-        """)
-        btn_logout.setCursor(Qt.PointingHandCursor)
-        btn_logout.clicked.connect(self.handle_logout)
-        layout.addWidget(btn_logout)
-
         self.main_layout.addWidget(sidebar)
 
     def switch_tab(self, index):
         for i, btn in enumerate(self.nav_btns):
             btn.setChecked(i == index)
         self.content_stack.setCurrentIndex(index)
-        
-        # Special case: If History tab is selected, fetch history
-        if index == 3: 
-            pass # TODO: Implement history fetch worker here if strictly separate
 
-    def handle_logout(self):
-        self.close()
-
-    # --- TAB INITIALIZATION ---
-
+    # --- TAB UI SETUP ---
     def init_overview_tab(self):
-        self.overview_page = QWidget()
-        layout = QVBoxLayout(self.overview_page)
-        layout.setContentsMargins(40, 40, 40, 40)
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setContentsMargins(30, 30, 30, 30)
         layout.setSpacing(20)
-
-        # Title
-        layout.addWidget(QLabel("Overview").setStyleSheet("font-size: 28px; font-weight: bold; color: #263238;"))
-
-        # KPI Cards Area
-        self.stats_container = QFrame()
-        self.stats_layout = QHBoxLayout(self.stats_container)
-        self.stats_layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self.stats_container)
-
-        # Upload Section
-        upload_box = QFrame()
-        upload_box.setStyleSheet("background-color: #f8f9fa; border: 2px dashed #cfd8dc; border-radius: 12px;")
-        upload_box.setFixedHeight(200)
-        ul_layout = QVBoxLayout(upload_box)
-        ul_layout.setAlignment(Qt.AlignCenter)
         
-        ul_label = QLabel("Upload New Dataset")
-        ul_label.setStyleSheet("color: #455a64; font-size: 16px; font-weight: bold;")
+        layout.addWidget(QLabel("Overview").setStyleSheet("font-size: 24px; font-weight: bold; color: #333;"))
         
-        btn_upload = QPushButton("Select CSV File")
+        # Stats Area
+        self.stats_box = QFrame()
+        self.stats_layout = QHBoxLayout(self.stats_box)
+        layout.addWidget(self.stats_box)
+        
+        # Upload
+        btn_upload = QPushButton("Upload New CSV")
         btn_upload.setFixedWidth(200)
-        btn_upload.setCursor(Qt.PointingHandCursor)
-        btn_upload.setStyleSheet("background-color: #1976D2; color: white; padding: 12px; font-weight: bold; border-radius: 6px;")
-        btn_upload.clicked.connect(self.handle_upload_click)
-        
-        ul_layout.addWidget(ul_label)
-        ul_layout.addWidget(btn_upload)
-        layout.addWidget(upload_box)
+        btn_upload.setStyleSheet("background-color: #1E88E5; color: white; padding: 12px; font-weight: bold; border-radius: 4px;")
+        btn_upload.clicked.connect(self.upload_file)
+        layout.addWidget(btn_upload)
         
         layout.addStretch()
-        self.content_stack.addWidget(self.overview_page)
+        self.content_stack.addWidget(page)
 
     def init_analytics_tab(self):
-        self.analytics_page = QWidget()
-        layout = QVBoxLayout(self.analytics_page)
-        layout.setContentsMargins(40, 40, 40, 40)
+        page = QWidget()
+        layout = QVBoxLayout(page)
         
-        # Header
         header = QHBoxLayout()
-        title = QLabel("Analytics Dashboard")
-        title.setStyleSheet("font-size: 28px; font-weight: bold; color: #263238;")
-        
+        header.addWidget(QLabel("Analytics Dashboard").setStyleSheet("font-size: 24px; font-weight: bold; color: #333;"))
         btn_pdf = QPushButton("Download Report")
-        btn_pdf.setIcon(self.style().standardIcon(self.style().SP_DialogSaveButton))
-        btn_pdf.setCursor(Qt.PointingHandCursor)
-        btn_pdf.clicked.connect(self.handle_export)
-        btn_pdf.setStyleSheet("background-color: #263238; color: white; padding: 10px 20px; border-radius: 6px; font-weight: bold;")
-        
-        header.addWidget(title)
-        header.addStretch()
+        btn_pdf.clicked.connect(self.download_report)
+        btn_pdf.setStyleSheet("background-color: #333; color: white; padding: 8px 16px; font-weight: bold;")
         header.addWidget(btn_pdf)
-        layout.addLayout(header)
-
-        # Charts Area
-        self.charts_container = QVBoxLayout()
-        layout.addLayout(self.charts_container)
         
-        self.content_stack.addWidget(self.analytics_page)
+        layout.addLayout(header)
+        
+        self.chart_container = QVBoxLayout()
+        layout.addLayout(self.chart_container)
+        
+        self.content_stack.addWidget(page)
 
     def init_data_tab(self):
-        self.data_page = QWidget()
-        layout = QVBoxLayout(self.data_page)
-        layout.setContentsMargins(40, 40, 40, 40)
-        layout.addWidget(QLabel("Raw Data Logs").setStyleSheet("font-size: 28px; font-weight: bold; color: #263238; margin-bottom: 20px;"))
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(QLabel("Raw Data Logs").setStyleSheet("font-size: 24px; font-weight: bold; color: #333;"))
         
-        self.table_widget = QTableWidget()
-        layout.addWidget(self.table_widget)
-        
-        self.content_stack.addWidget(self.data_page)
+        self.table = QTableWidget()
+        layout.addWidget(self.table)
+        self.content_stack.addWidget(page)
 
     def init_history_tab(self):
-        self.history_page = QWidget()
-        layout = QVBoxLayout(self.history_page)
-        layout.setContentsMargins(40, 40, 40, 40)
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.addWidget(QLabel("Upload History").setStyleSheet("font-size: 24px; font-weight: bold; color: #333;"))
         
-        layout.addWidget(QLabel("Upload History").setStyleSheet("font-size: 28px; font-weight: bold; color: #263238; margin-bottom: 20px;"))
-        
-        # Scroll Area for History List
+        self.history_list_layout = QVBoxLayout()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("border: none; background-color: transparent;")
+        container = QWidget()
+        container.setLayout(self.history_list_layout)
+        scroll.setWidget(container)
         
-        self.history_content = QWidget()
-        self.history_layout = QVBoxLayout(self.history_content)
-        self.history_layout.setAlignment(Qt.AlignTop)
-        
-        scroll.setWidget(self.history_content)
         layout.addWidget(scroll)
-        
-        self.content_stack.addWidget(self.history_page)
+        self.content_stack.addWidget(page)
 
-    # --- LOGIC & WORKERS ---
-
+    # --- LOGIC ---
     def refresh_data(self):
-        self.status_label.setText("Syncing data with server...")
-        self.data_worker = DataFetchWorker()
-        self.data_worker.data_ready.connect(self.on_data_received)
-        self.data_worker.error_occurred.connect(lambda msg: self.status_label.setText(f"Error: {msg}"))
-        self.data_worker.start()
+        self.worker = DataFetchWorker()
+        self.worker.data_ready.connect(self.update_ui)
+        self.worker.history_ready.connect(self.update_history)
+        self.worker.start()
 
-    def on_data_received(self, data):
-        self.dashboard_data = data
-        self.status_label.setText("Data Synced.")
-        
+    def update_ui(self, data):
         # 1. Update Stats
-        self.update_stats(data['summary'])
+        # Clear old stats
+        while self.stats_layout.count():
+            w = self.stats_layout.takeAt(0).widget()
+            if w: w.deleteLater()
+            
+        summary = data['summary']
+        metrics = [
+            ("Total Records", summary['total_records'], "#1E88E5"),
+            ("Avg Flow", f"{summary['avg_flowrate']:.2f}", "#43A047"),
+            ("Avg Pressure", f"{summary['avg_pressure']:.2f}", "#FB8C00")
+        ]
+        
+        for label, val, color in metrics:
+            card = QFrame()
+            card.setStyleSheet(f"background-color: white; border-left: 5px solid {color}; border: 1px solid #ddd;")
+            cl = QVBoxLayout(card)
+            cl.addWidget(QLabel(label).setStyleSheet("color: #777; font-weight: bold;"))
+            cl.addWidget(QLabel(str(val)).setStyleSheet("font-size: 24px; font-weight: bold;"))
+            self.stats_layout.addWidget(card)
+            
         # 2. Update Charts
-        self.update_charts(data)
+        while self.chart_container.count():
+            w = self.chart_container.takeAt(0).widget()
+            if w: w.deleteLater()
+        self.chart_container.addWidget(DashboardCharts(data))
+        
         # 3. Update Table
         self.update_table(data['equipment_list'])
-        # 4. Update History 
-        self.update_history_simulated(data['summary'])
 
-    def update_stats(self, summary):
-        # Clear existing
-        while self.stats_layout.count():
-            item = self.stats_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
+    def update_table(self, rows):
+        self.table.setRowCount(len(rows))
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["ID", "Name", "Type", "Flow", "Pressure"])
+        for r, item in enumerate(rows):
+            self.table.setItem(r, 0, QTableWidgetItem(str(item['equipment_id'])))
+            self.table.setItem(r, 1, QTableWidgetItem(str(item['name'])))
+            self.table.setItem(r, 2, QTableWidgetItem(str(item['type'])))
+            self.table.setItem(r, 3, QTableWidgetItem(str(item['flowrate'])))
+            self.table.setItem(r, 4, QTableWidgetItem(str(item['pressure'])))
 
-        metrics = [
-            ("Total Records", summary['total_records'], "#1976D2"),
-            ("Avg Flow", f"{summary['avg_flowrate']:.2f}", "#388E3C"),
-            ("Avg Pressure", f"{summary['avg_pressure']:.2f}", "#FBC02D"),
-            ("Avg Temp", f"{summary['avg_temperature']:.2f}", "#D32F2F")
-        ]
-
-        for label, value, color in metrics:
+    def update_history(self, history):
+        while self.history_list_layout.count():
+            w = self.history_list_layout.takeAt(0).widget()
+            if w: w.deleteLater()
+            
+        for item in history:
             card = QFrame()
-            card.setStyleSheet(f"background-color: white; border-left: 5px solid {color}; border-radius: 8px; border: 1px solid #e0e0e0;")
-            card.setFixedWidth(240)
-            card.setFixedHeight(120)
+            card.setStyleSheet("background-color: white; border: 1px solid #ddd; margin-bottom: 5px; padding: 10px;")
+            cl = QHBoxLayout(card)
             
-            l = QVBoxLayout(card)
-            l.setContentsMargins(20, 20, 20, 20)
+            info = QLabel(f"<b>{item['file_name']}</b><br><span style='color:#777'>{item['uploaded_at']}</span>")
+            stats = QLabel(f"Records: {item['total_records']}")
             
-            lbl_title = QLabel(label)
-            lbl_title.setStyleSheet("color: #78909c; font-weight: bold; font-size: 14px;")
-            
-            lbl_val = QLabel(str(value))
-            lbl_val.setStyleSheet("color: #263238; font-weight: bold; font-size: 28px;")
-            
-            l.addWidget(lbl_title)
-            l.addWidget(lbl_val)
-            self.stats_layout.addWidget(card)
+            cl.addWidget(info)
+            cl.addStretch()
+            cl.addWidget(stats)
+            self.history_list_layout.addWidget(card)
         
-        self.stats_layout.addStretch()
+        self.history_list_layout.addStretch()
 
-    def update_charts(self, data):
-        # Clear previous charts
-        while self.charts_container.count():
-            item = self.charts_container.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-            
-        self.charts = DashboardCharts(data)
-        self.charts_container.addWidget(self.charts)
-
-    def update_table(self, equipment_list):
-        cols = ["ID", "Name", "Type", "Flowrate", "Pressure", "Temp"]
-        self.table_widget.setColumnCount(len(cols))
-        self.table_widget.setHorizontalHeaderLabels(cols)
-        self.table_widget.setRowCount(len(equipment_list))
-        self.table_widget.setAlternatingRowColors(True)
-        self.table_widget.setStyleSheet("QHeaderView::section { background-color: #eceff1; padding: 4px; border: none; font-weight: bold; }")
-        
-        for row, item in enumerate(equipment_list):
-            self.table_widget.setItem(row, 0, QTableWidgetItem(str(item['equipment_id'])))
-            self.table_widget.setItem(row, 1, QTableWidgetItem(str(item['name'])))
-            self.table_widget.setItem(row, 2, QTableWidgetItem(str(item['type'])))
-            self.table_widget.setItem(row, 3, QTableWidgetItem(str(item['flowrate'])))
-            self.table_widget.setItem(row, 4, QTableWidgetItem(str(item['pressure'])))
-            self.table_widget.setItem(row, 5, QTableWidgetItem(str(item['temperature'])))
-
-    def update_history_simulated(self, summary):
-        
-        # Clear
-        while self.history_layout.count():
-            item = self.history_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-
-        # Create a card
-        card = QFrame()
-        card.setStyleSheet("background-color: white; border: 1px solid #e0e0e0; border-radius: 8px;")
-        card.setFixedHeight(80)
-        h_layout = QHBoxLayout(card)
-        
-        icon = QLabel("📄")
-        icon.setStyleSheet("font-size: 24px;")
-        
-        info_layout = QVBoxLayout()
-        fname = QLabel(summary['file_name'])
-        fname.setStyleSheet("font-weight: bold; font-size: 16px;")
-        fdate = QLabel(f"Uploaded: {summary['uploaded_at']}")
-        fdate.setStyleSheet("color: #90a4ae;")
-        info_layout.addWidget(fname)
-        info_layout.addWidget(fdate)
-        
-        h_layout.addWidget(icon)
-        h_layout.addLayout(info_layout)
-        h_layout.addStretch()
-        
-        self.history_layout.addWidget(card)
-
-    def handle_upload_click(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "Select CSV", "", "CSV Files (*.csv)")
-        if file_path:
-            self.status_label.setText(f"Uploading {file_path}...")
-            self.upload_worker = UploadWorker(file_path)
-            self.upload_worker.finished.connect(self.on_upload_finished)
-            self.upload_worker.start()
-
-    def on_upload_finished(self, success, message):
-        if success:
-            QMessageBox.information(self, "Success", message)
-            self.refresh_data()
-        else:
-            QMessageBox.critical(self, "Error", message)
-            self.status_label.setText("Upload Failed.")
-
-    def handle_export(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Save Report", "report.pdf", "PDF Files (*.pdf)")
+    def upload_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, "CSV", "", "*.csv")
         if path:
-            self.status_label.setText("Downloading PDF...")
-            success, msg = APIClient.download_pdf(path)
-            if success:
-                QMessageBox.information(self, "Success", f"Report saved to {path}")
-            else:
-                QMessageBox.critical(self, "Error", msg)
-            self.status_label.setText("Ready.")
+            self.u_worker = UploadWorker(path)
+            self.u_worker.finished.connect(lambda s, m: (QMessageBox.information(self, "Info", m), self.refresh_data()))
+            self.u_worker.start()
+
+    def download_report(self):
+        path, _ = QFileDialog.getSaveFileName(self, "PDF", "report.pdf", "*.pdf")
+        if path:
+            APIClient.download_pdf(path)
+            QMessageBox.information(self, "Info", "Saved!")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     
-    # Apply Theme
-    apply_stylesheet(app, theme='light_blue.xml')
-    
-    # Fix Icon Warnings
+    # Try applying theme, ignore if fails (SVG errors)
+    if HAS_THEME:
+        try:
+            apply_stylesheet(app, theme='light_blue.xml')
+        except:
+            pass
+            
+    # Fix logging noise
     os.environ["QT_LOGGING_RULES"] = "*.debug=false;qt.svg.warning=false"
 
-    # Login Flow
     login = LoginWindow()
     if login.exec_() == QDialog.Accepted:
-        window = MainWindow()
-        window.show()
+        w = MainWindow()
+        w.show()
         sys.exit(app.exec_())
-    else:
-        sys.exit(0)
