@@ -8,6 +8,7 @@ from qt_material import apply_stylesheet
 from workers import UploadWorker, DataFetchWorker
 from api_client import APIClient
 from charts import DashboardCharts 
+from login import LoginWindow
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -150,10 +151,12 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     apply_stylesheet(app, theme='light_blue.xml')
     
-    # Fix for missing icons warning in terminal
-    import os
-    os.environ["QT_LOGGING_RULES"] = "*.debug=false;qt.svg.warning=false"
-
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec_())
+    # Show Login Dialog First
+    login = LoginWindow()
+    if login.exec_() == QDialog.Accepted:
+        # Only start main window if login succeeded
+        window = MainWindow()
+        window.show()
+        sys.exit(app.exec_())
+    else:
+        sys.exit(0)

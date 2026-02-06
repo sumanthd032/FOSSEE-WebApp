@@ -10,6 +10,7 @@ import { api } from './services/api';
 import { FileDown } from 'lucide-react';
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [dashboardData, setDashboardData] = useState(null);
   const [historyData, setHistoryData] = useState([]); 
@@ -65,6 +66,29 @@ function App() {
       alert("Failed to download PDF.");
     }
   };
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+        setIsAuthenticated(true);
+        fetchDashboardData(); 
+    }
+  }, []);
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+    fetchDashboardData();
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    setIsAuthenticated(false);
+    setDashboardData(null);
+  };
+
+  if (!isAuthenticated) {
+    return <Auth onLoginSuccess={handleLoginSuccess} />;
+  }
 
   const renderContent = () => {
     if (loading) return <div className="p-10 text-center">Loading...</div>;
@@ -142,11 +166,12 @@ function App() {
     <div className="bg-slate-50 min-h-screen font-sans text-slate-900 flex">
       <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
       <div className="flex-1 ml-64 transition-all duration-300">
-        <header className="bg-white h-16 border-b border-slate-200 sticky top-0 z-40 px-8 flex items-center shadow-sm">
-            <h1 className="text-xl font-bold text-slate-800 capitalize tracking-tight">{activeTab}</h1>
+        <header className="bg-white h-16 border-b border-slate-200 sticky top-0 z-40 px-8 flex items-center justify-between shadow-sm">
+          <h1 className="text-xl font-bold text-slate-800 capitalize tracking-tight">{activeTab}</h1>
+          <button onClick={handleLogout} className="text-xs font-bold text-red-500 border border-red-200 px-3 py-1 rounded-full hover:bg-red-50">LOG OUT</button>
         </header>
         <main className="p-8 max-w-7xl mx-auto">
-            {renderContent()}
+          {renderContent()}
         </main>
       </div>
     </div>
